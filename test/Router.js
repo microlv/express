@@ -43,6 +43,31 @@ describe('Router', function(){
     router.handle({ url: '/test/route', method: 'GET' }, { end: done });
   });
 
+  it('should handle blank URL', function(done){
+    var router = new Router();
+
+    router.use(function (req, res) {
+      false.should.be.true;
+    });
+
+    router.handle({ url: '', method: 'GET' }, {}, done);
+  });
+
+  it('should not stack overflow with many registered routes', function(done){
+    var handler = function(req, res){ res.end(new Error('wrong handler')) };
+    var router = new Router();
+
+    for (var i = 0; i < 6000; i++) {
+      router.get('/thing' + i, handler)
+    }
+
+    router.get('/', function (req, res) {
+      res.end();
+    });
+
+    router.handle({ url: '/', method: 'GET' }, { end: done });
+  });
+
   describe('.handle', function(){
     it('should dispatch', function(done){
       var router = new Router();
@@ -199,6 +224,23 @@ describe('Router', function(){
       router.use('/proxy', function (req, res, next) {
         assert.equal(req.hit++, 0);
         assert.equal(req.url, '/?url=http://example.com/blog/post/1');
+        next();
+      });
+
+      router.handle(request, {}, function (err) {
+        if (err) return done(err);
+        assert.equal(request.hit, 1);
+        done();
+      });
+    });
+
+    it('should ignore FQDN in path', function (done) {
+      var request = { hit: 0, url: '/proxy/http://example.com/blog/post/1', method: 'GET' };
+      var router = new Router();
+
+      router.use('/proxy', function (req, res, next) {
+        assert.equal(req.hit++, 0);
+        assert.equal(req.url, '/http://example.com/blog/post/1');
         next();
       });
 
