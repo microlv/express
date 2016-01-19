@@ -320,6 +320,22 @@ describe('app.router', function(){
       .expect(200, '[["0","10"],["1","tj"],["2","profile"]]', done);
     })
 
+    it('should merge numeric indices req.params when parent has same number', function(done){
+      var app = express();
+      var router = new express.Router({ mergeParams: true });
+
+      router.get('/name:(\\w+)', function(req, res){
+        var keys = Object.keys(req.params).sort();
+        res.send(keys.map(function(k){ return [k, req.params[k]] }));
+      });
+
+      app.use('/user/id:(\\d+)', router);
+
+      request(app)
+      .get('/user/id:10/name:tj')
+      .expect(200, '[["0","10"],["1","tj"]]', done);
+    })
+
     it('should ignore invalid incoming req.params', function(done){
       var app = express();
       var router = new express.Router({ mergeParams: true });
@@ -337,6 +353,26 @@ describe('app.router', function(){
       request(app)
       .get('/user/tj')
       .expect(200, '[["name","tj"]]', done);
+    })
+
+    it('should restore req.params', function(done){
+      var app = express();
+      var router = new express.Router({ mergeParams: true });
+
+      router.get('/user:(\\w+)/*', function (req, res, next) {
+        next();
+      });
+
+      app.use('/user/id:(\\d+)', function (req, res, next) {
+        router(req, res, function (err) {
+          var keys = Object.keys(req.params).sort();
+          res.send(keys.map(function(k){ return [k, req.params[k]] }));
+        });
+      });
+
+      request(app)
+      .get('/user/id:42/user:tj/profile')
+      .expect(200, '[["0","42"]]', done);
     })
   })
 
@@ -641,6 +677,30 @@ describe('app.router', function(){
       .get('/file')
       .expect(404, done);
     })
+
+    it('should keep correct parameter indexes', function(done){
+      var app = express();
+
+      app.get('/*/user/:id', function (req, res) {
+        res.send(req.params);
+      });
+
+      request(app)
+      .get('/1/user/2')
+      .expect(200, '{"0":"1","id":"2"}', done);
+    })
+
+    it('should work within arrays', function(done){
+      var app = express();
+
+      app.get(['/user/:id', '/foo/*', '/:bar'], function (req, res) {
+        res.send(req.params.bar);
+      });
+
+      request(app)
+      .get('/test')
+      .expect(200, 'test', done);
+    })
   })
 
   describe(':name', function(){
@@ -677,6 +737,35 @@ describe('app.router', function(){
 
       request(app)
       .get('/user/tj/edit')
+      .expect('editing tj', done);
+    })
+
+    it('should work following a partial capture group', function(done){
+      var app = express();
+      var cb = after(2, done);
+
+      app.get('/user(s)?/:user/:op', function(req, res){
+        res.end(req.params.op + 'ing ' + req.params.user + (req.params[0] ? ' (old)' : ''));
+      });
+
+      request(app)
+      .get('/user/tj/edit')
+      .expect('editing tj', cb);
+
+      request(app)
+      .get('/users/tj/edit')
+      .expect('editing tj (old)', cb);
+    })
+
+    it('should work inside literal paranthesis', function(done){
+      var app = express();
+
+      app.get('/:user\\(:op\\)', function(req, res){
+        res.end(req.params.op + 'ing ' + req.params.user);
+      });
+
+      request(app)
+      .get('/tj(edit)')
       .expect('editing tj', done);
     })
 
